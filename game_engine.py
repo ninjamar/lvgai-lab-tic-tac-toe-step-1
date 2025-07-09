@@ -1,5 +1,6 @@
 from main import TicTacToeBoard
 
+
 def game():
     board = TicTacToeBoard()
     print(board.format_board())
@@ -8,18 +9,18 @@ def game():
         player = input("Which player is playing? (x/o): ")
         if not board.is_my_turn(player):
             continue
-        
+
         position = int(input("Enter the position to play: "))
         if not board.make_move(position):
             continue
 
         print(board.format_board())
-        board.switch_turn()
 
     if board.state == "is_won":
         print(f"Player {board.winner} wins!")
     elif board.state == "is_draw":
         print("The game is a draw!")
+
 
 if __name__ == "__main__":
     game()

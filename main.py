@@ -12,6 +12,7 @@ WIN_COMBINATIONS = [
     (2, 4, 6),
 ]
 
+
 @dataclass
 class TicTacToeBoard:
     state: str = field(default="is_playing")
@@ -19,13 +20,12 @@ class TicTacToeBoard:
     player_turn: str = field(default="x")
     positions: list[str] = field(default_factory=lambda: ["" for _ in range(9)])
 
-    
     def is_my_turn(self, i_am: str) -> bool:
         return self.player_turn == i_am
 
     def make_move(self, position: int) -> bool:
         # Return True is move is valid and successful
-        if self.check_winner() is None:
+        if self.state != "is_playing":
             return False
         if not (0 <= position < 9):
             return False
@@ -33,13 +33,16 @@ class TicTacToeBoard:
             return False
         self.positions[position] = self.player_turn
 
-        if (winner:=self.check_winner()):
+        if (winner := self.check_winner()):
             self.state = "is_won"
             self.winner = winner
         elif self.check_draw():
             self.state = "is_draw"
         else:
             self.state = "is_playing"
+        
+        self.switch_turn()
+
         return True
 
     def check_winner(self):
@@ -47,10 +50,12 @@ class TicTacToeBoard:
         for combination in WIN_COMBINATIONS:
             # If the player holds all positions in the combination needed to win
             player = self.positions[combination[0]]
+            if player == "":
+                continue
             if all(self.positions[i] == player for i in combination):
                 return player
         return None
-    
+
     def check_draw(self):
         # Returns True if the board is full and no player has won
         return all(self.positions) and self.check_winner() is None
@@ -59,4 +64,11 @@ class TicTacToeBoard:
         self.player_turn = "o" if self.player_turn == "x" else "x"
 
     def format_board(self):
-        return "\n".join(" ".join(self.positions[i:i+3]) for i in range(0, 9, 3))
+        return "\n".join(
+            "".join(
+                [
+                    ("_" if p == "" else p) for p in self.positions[i : i + 3]
+                ]
+            )
+            for i in range(0, 9, 3)
+        )
