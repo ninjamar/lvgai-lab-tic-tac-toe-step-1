@@ -1,26 +1,44 @@
-from main import TicTacToeBoard
+import argparse
+from tictactoe import TicTacToeBoard
 
 
-def game():
-    board = TicTacToeBoard()
+def game(args):
+    if args.reset:
+        print("Resetting board")
+        board = TicTacToeBoard()
+        board.reset()
+        board.save_to_redis()
+        return
+    else:
+        board = TicTacToeBoard.load_from_redis()
     print(board.format_board())
 
-    while board.state == "is_playing":
-        player = input("Which player is playing? (x/o): ")
-        if not board.is_my_turn(player):
-            continue
+    args.player = args.player.lower()
+    if board.state == "is_playing":
+        if not board.is_my_turn(args.player):
+            print("It's not your turn.")
+            return
 
-        position = int(input("Enter the position to play: "))
+        position = int(input(f"Player {args.player}, enter the position to play: "))
         if not board.make_move(position):
-            continue
+            print("Invalid move.")
+            return
 
         print(board.format_board())
 
     if board.state == "is_won":
-        print(f"Player {board.winner} wins!")
+        print(f"Player {board.winner.upper()} wins!")
     elif board.state == "is_draw":
         print("The game is a draw!")
 
+    board.save_to_redis()
+
+
 
 if __name__ == "__main__":
-    game()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--player", type=str, required=True)
+    parser.add_argument("--reset", action="store_true")
+
+    args = parser.parse_args()
+    game(args)
