@@ -1,4 +1,4 @@
-import redis
+import redis.asyncio as redis
 from dataclasses import dataclass, field
 import os
 from dotenv import load_dotenv
@@ -8,10 +8,13 @@ load_dotenv()
 rd = redis.Redis(
     host=os.getenv("REDIS_HOST"),
     port=int(os.getenv("REDIS_PORT")),
-    password=os.getenv("REDIS_PASSWORD")
+    password=os.getenv("REDIS_PASSWORD"),
+    decode_responses=True,
 )
 
-KEY = "tictactoe:game_state:4" # Team 4
+PREFIX = "NM:4:"  # Team 4
+KEY = PREFIX + "tictactoe:game_state"
+PUB_SUB_KEY = PREFIX + "tictactoe:pubsub"
 
 WIN_COMBINATIONS = [
     (0, 1, 2),
@@ -23,6 +26,16 @@ WIN_COMBINATIONS = [
     (0, 4, 8),
     (2, 4, 6),
 ]
+
+def ensure_input(prompt: str, allowed: list, t: type = str):
+    ipt = t(input(prompt))
+    while ipt not in allowed:
+        try:
+            ipt = t(input(prompt))
+        except:
+            continue
+    return ipt
+
 
 @dataclass
 class TicTacToeBoard:
@@ -44,14 +57,14 @@ class TicTacToeBoard:
             return False
         self.positions[position] = self.player_turn
 
-        if (winner := self.check_winner()):
+        if winner := self.check_winner():
             self.state = "is_won"
             self.winner = winner
         elif self.check_draw():
             self.state = "is_draw"
         else:
             self.state = "is_playing"
-        
+
         self.switch_turn()
 
         return True
@@ -75,31 +88,32 @@ class TicTacToeBoard:
         self.player_turn = "o" if self.player_turn == "x" else "x"
 
     def format_board(self) -> str:
-        out = ""
+        out = "-" * 13 + "\n"
         for row_idx in range(0, 9, 3):
             buf = ""
             for spot_idx, spot in enumerate(self.positions[row_idx : row_idx + 3]):
-                buf += str(row_idx + spot_idx) if spot == "" else spot
-            out += buf + "\n"
+                char = str(row_idx + spot_idx) if spot == "" else spot
+                buf += f"| {char} "
+            buf = f"{buf}|" + "\n"
+            out += buf
+            out += "-" * 13 + "\n"
         return out
 
     def serialize(self) -> str:
         return {
-                "state": self.state,
-                "winner": self.winner,
-                "player_turn": self.player_turn,
-                "positions": self.positions,
-            }
-        
+            "state": self.state,
+            "winner": self.winner,
+            "player_turn": self.player_turn,
+            "positions": self.positions,
+        }
 
-    def save_to_redis(self) -> None:
+    async def save_to_redis(self) -> None:
         data = self.serialize()
-        rd.json().set(KEY, ".", data)
-
+        await rd.json().set(KEY, ".", data)
 
     @classmethod
-    def load_from_redis(cls) -> "TicTacToeBoard":
-        data = rd.json().get(KEY)
+    async def load_from_redis(cls) -> "TicTacToeBoard":
+        data = await rd.json().get(KEY)
         if not data:
             return cls()
         return cls(**data)
@@ -111,3 +125,52 @@ class TicTacToeBoard:
         self.player_turn = "x"
         self.positions = ["" for _ in range(9)]
 
+
+async def handle_board_state(i_am_playing: str):
+    board = await TicTacToeBoard.load_from_redis()
+    print("Player turn: ", board.player_turn)
+
+    print(board.format_board())
+
+    if board.state == "is_won":
+        print(f"Player {board.winner.upper()} wins!")
+        return True
+    elif board.state == "is_draw":
+        print("The game is a draw!")
+        return True
+
+    if board.is_my_turn(i_am_playing):
+        making_move = True
+        while making_move:
+            move = ensure_input("Make a move:", range(9), int)
+            if not board.make_move(move):
+                print("Invalid move.")
+                continue
+            else:
+                making_move = False
+
+        await board.save_to_redis()
+        await rd.publish(PUB_SUB_KEY, "Yay!")
+
+
+async def listen_for_updates(i_am_playing: str):
+    pubsub = rd.pubsub()
+    await pubsub.subscribe(PUB_SUB_KEY)
+
+    try:
+        result = await handle_board_state(i_am_playing)
+
+        if result:
+            return
+
+        print("Waiting for other player...")
+    
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                result = await handle_board_state(i_am_playing)
+                if result:
+                    return
+                print("Waiting for other player...")
+    
+    finally:
+        await pubsub.close()
