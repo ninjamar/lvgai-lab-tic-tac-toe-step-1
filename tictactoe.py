@@ -1,7 +1,10 @@
 import redis.asyncio as redis
-from dataclasses import dataclass, field
+import dataclasses
 import os
+import json
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from typing import Any
 
 load_dotenv()
 
@@ -27,6 +30,7 @@ WIN_COMBINATIONS = [
     (2, 4, 6),
 ]
 
+
 def ensure_input(prompt: str, allowed: list, t: type = str):
     ipt = t(input(prompt))
     while ipt not in allowed:
@@ -36,25 +40,29 @@ def ensure_input(prompt: str, allowed: list, t: type = str):
             continue
     return ipt
 
+class ClientResponse(BaseModel):
+    success: bool
+    message: str
+    board: list | None
 
-@dataclass
+@dataclasses.dataclass
 class TicTacToeBoard:
-    state: str = field(default="is_playing")
-    winner: str | None = field(default=None)
-    player_turn: str = field(default="x")
-    positions: list[str] = field(default_factory=lambda: ["" for _ in range(9)])
+    state: str = dataclasses.field(default="is_playing")
+    winner: str | None = dataclasses.field(default=None)
+    player_turn: str = dataclasses.field(default="x")
+    positions: list[str] = dataclasses.field(default_factory=lambda: ["" for _ in range(9)])
 
     def is_my_turn(self, i_am: str) -> bool:
         return self.player_turn == i_am and self.state == "is_playing"
 
-    def make_move(self, position: int) -> bool:
+    def make_move(self, position: int) -> ClientResponse:
         # Return True is move is valid and successful
         if self.state != "is_playing":
-            return False
+            return ClientResponse(success=False, message="Game is not in progress", board=None)
         if not (0 <= position < 9):
-            return False
+            return ClientResponse(success=False, message="Invalid position", board=None)
         if self.positions[position]:
-            return False
+            return ClientResponse(success=False, message="Position already taken", board=None)
         self.positions[position] = self.player_turn
 
         if winner := self.check_winner():
@@ -67,7 +75,10 @@ class TicTacToeBoard:
 
         self.switch_turn()
 
-        return True
+        return ClientResponse(success=True, message="Move successful", board=self.positions)
+    
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
 
     def check_winner(self) -> str | None:
         # Returns the winning player if there is one
@@ -100,12 +111,14 @@ class TicTacToeBoard:
         return out
 
     def serialize(self) -> str:
-        return {
-            "state": self.state,
-            "winner": self.winner,
-            "player_turn": self.player_turn,
-            "positions": self.positions,
-        }
+        return json.dumps(
+            {
+                "state": self.state,
+                "winner": self.winner,
+                "player_turn": self.player_turn,
+                "positions": self.positions,
+            }
+        )
 
     async def save_to_redis(self) -> None:
         data = self.serialize()
@@ -113,7 +126,7 @@ class TicTacToeBoard:
 
     @classmethod
     async def load_from_redis(cls) -> "TicTacToeBoard":
-        data = await rd.json().get(KEY)
+        data = json.loads(await rd.json().get(KEY))
         if not data:
             return cls()
         return cls(**data)
@@ -130,7 +143,8 @@ async def handle_board_state(i_am_playing: str):
     board = await TicTacToeBoard.load_from_redis()
     print("Player turn: ", board.player_turn)
 
-    print(board.format_board())
+    # print(board.format_board())
+    print(json.dumps(board.to_dict(), indent=2))
 
     if board.state == "is_won":
         print(f"Player {board.winner.upper()} wins!")
@@ -143,8 +157,10 @@ async def handle_board_state(i_am_playing: str):
         making_move = True
         while making_move:
             move = ensure_input("Make a move:", range(9), int)
-            if not board.make_move(move):
-                print("Invalid move.")
+            move = board.make_move(move)
+            print(move.message)
+
+            if not move.success:
                 continue
             else:
                 making_move = False
@@ -164,13 +180,13 @@ async def listen_for_updates(i_am_playing: str):
             return
 
         print("Waiting for other player...")
-    
+
         async for message in pubsub.listen():
             if message["type"] == "message":
                 result = await handle_board_state(i_am_playing)
                 if result:
                     return
                 print("Waiting for other player...")
-    
+
     finally:
         await pubsub.close()
