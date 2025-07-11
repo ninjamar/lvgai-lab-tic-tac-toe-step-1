@@ -14,10 +14,13 @@ rd = redis.Redis(
     password=os.getenv("REDIS_PASSWORD"),
     decode_responses=True,
 )
-BASE_URL = "http://localhost:8000"
-PREFIX = "NM:4:"  # Team 4
-KEY = PREFIX + "tictactoe:game_state"
-PUB_SUB_KEY = PREFIX + "tictactoe:pubsub"
+
+WS_BASE_URL = os.environ["WS_BASE_URL"]
+BASE_URL = os.environ["BASE_URL"]
+PREFIX = os.environ["PREFIX"]
+KEY = os.environ["KEY"]
+PUB_SUB_KEY = os.environ["PUB_SUB_KEY"]
+
 
 def ensure_input(prompt: str, allowed: list, t: type = str):
     ipt = t(input(prompt))
@@ -28,17 +31,23 @@ def ensure_input(prompt: str, allowed: list, t: type = str):
             continue
     return ipt
 
+
 async def get_state(client: httpx.AsyncClient):
     response = await client.get(f"{BASE_URL}/state")
     return response.json()
 
+
 async def make_move(client: httpx.AsyncClient, player: str, position: int):
-    response = await client.post(f"{BASE_URL}/move", json={"player": player, "position": position})
+    response = await client.post(
+        f"{BASE_URL}/move", json={"player": player, "position": position}
+    )
     return response.json()
+
 
 async def reset(client: httpx.AsyncClient):
     response = await client.post(f"{BASE_URL}/reset")
     return response.json()
+
 
 async def handle_board_state(client: httpx.AsyncClient, i_am_playing: str):
     t = await get_state(client)

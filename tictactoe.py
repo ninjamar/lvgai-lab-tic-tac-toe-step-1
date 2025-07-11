@@ -15,9 +15,9 @@ rd = redis.Redis(
     decode_responses=True,
 )
 
-PREFIX = "NM:4:"  # Team 4
-KEY = PREFIX + "tictactoe:game_state"
-PUB_SUB_KEY = PREFIX + "tictactoe:pubsub"
+PREFIX = os.environ["PREFIX"]
+KEY = os.environ["KEY"]
+PUB_SUB_KEY = os.environ["PUB_SUB_KEY"]
 
 WIN_COMBINATIONS = [
     (0, 1, 2),
@@ -40,6 +40,7 @@ def ensure_input(prompt: str, allowed: list, t: type = str):
             continue
     return ipt
 
+
 class ClientResponse(BaseModel):
     success: bool
     message: str
@@ -48,42 +49,70 @@ class ClientResponse(BaseModel):
     board: list | None = None
     winner: str | None = None
 
+
 @dataclasses.dataclass
 class TicTacToeBoard:
     state: str = dataclasses.field(default="is_playing")
     winner: str | None = dataclasses.field(default=None)
     player_turn: str = dataclasses.field(default="x")
-    positions: list[str] = dataclasses.field(default_factory=lambda: ["" for _ in range(9)])
+    positions: list[str] = dataclasses.field(
+        default_factory=lambda: ["" for _ in range(9)]
+    )
 
     def is_my_turn(self, i_am: str) -> bool:
         return self.player_turn == i_am and self.state == "is_playing"
 
     def make_move(self, i_am: str, position: int) -> ClientResponse:
         if not self.is_my_turn(i_am):
-            return ClientResponse(success=False, message="It's not your turn", state=self.state)
+            return ClientResponse(
+                success=False, message="It's not your turn", state=self.state
+            )
         # Return True is move is valid and successful
         if self.state != "is_playing":
-            return ClientResponse(success=False, message="Game is not in progress", state=self.state)
+            return ClientResponse(
+                success=False, message="Game is not in progress", state=self.state
+            )
         if not (0 <= position < 9):
-            return ClientResponse(success=False, message="Invalid position", state=self.state)
+            return ClientResponse(
+                success=False, message="Invalid position", state=self.state
+            )
         if self.positions[position]:
-            return ClientResponse(success=False, message="Position already taken", state=self.state)
+            return ClientResponse(
+                success=False, message="Position already taken", state=self.state
+            )
         self.positions[position] = self.player_turn
 
         if winner := self.check_winner():
             self.state = "is_won"
             self.winner = winner
-            return ClientResponse(success=True, message=f"Player {winner.upper()} wins!", board=self.positions, state=self.state, winner=self.winner)
+            return ClientResponse(
+                success=True,
+                message=f"Player {winner.upper()} wins!",
+                board=self.positions,
+                state=self.state,
+                winner=self.winner,
+            )
         elif self.check_draw():
             self.state = "is_draw"
-            return ClientResponse(success=True, message="The game is a draw!", board=self.positions, state=self.state, winner=self.winner)
+            return ClientResponse(
+                success=True,
+                message="The game is a draw!",
+                board=self.positions,
+                state=self.state,
+                winner=self.winner,
+            )
         else:
             self.state = "is_playing"
 
         self.switch_turn()
 
-        return ClientResponse(success=True, message="Move successful", board=self.positions, state=self.state)
-    
+        return ClientResponse(
+            success=True,
+            message="Move successful",
+            board=self.positions,
+            state=self.state,
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
 
