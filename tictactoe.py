@@ -19,6 +19,7 @@ PREFIX = os.environ["PREFIX"]
 KEY = os.environ["KEY"]
 PUB_SUB_KEY = os.environ["PUB_SUB_KEY"]
 
+
 WIN_COMBINATIONS = [
     (0, 1, 2),
     (3, 4, 5),
@@ -46,7 +47,7 @@ class ClientResponse(BaseModel):
     message: str
     state: str | None
 
-    board: list | None = None
+    positions: list | None = None
     winner: str | None = None
 
 
@@ -88,7 +89,7 @@ class TicTacToeBoard:
             return ClientResponse(
                 success=True,
                 message=f"Player {winner.upper()} wins!",
-                board=self.positions,
+                positions=self.positions,
                 state=self.state,
                 winner=self.winner,
             )
@@ -97,7 +98,7 @@ class TicTacToeBoard:
             return ClientResponse(
                 success=True,
                 message="The game is a draw!",
-                board=self.positions,
+                positions=self.positions,
                 state=self.state,
                 winner=self.winner,
             )
@@ -109,12 +110,12 @@ class TicTacToeBoard:
         return ClientResponse(
             success=True,
             message="Move successful",
-            board=self.positions,
+            positions=self.positions,
             state=self.state,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return dataclasses.asdict(self)
+        return dataclasses.asdict(self)        
 
     def check_winner(self) -> str | None:
         # Returns the winning player if there is one
@@ -162,10 +163,10 @@ class TicTacToeBoard:
 
     @classmethod
     async def load_from_redis(cls) -> "TicTacToeBoard":
-        data = json.loads(await rd.json().get(KEY))
+        data = await rd.json().get(KEY)
         if not data:
             return cls()
-        return cls(**data)
+        return cls(**json.loads(data))
 
     def reset(self) -> None:
         # TODO: In the future, call fields(self) and dynamically reset the board

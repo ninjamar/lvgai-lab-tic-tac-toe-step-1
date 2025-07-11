@@ -11,7 +11,6 @@ KEY = os.getenv("KEY")
 PUB_SUB_KEY = os.getenv("PUB_SUB_KEY")
 
 WS_BASE_URL = os.environ["WS_BASE_URL"]
-print(WS_BASE_URL)
 
 # Incoming message format: whatever board.to_dict() returns
 
@@ -28,12 +27,15 @@ def format_board(board: list[str]):
     return out
 
 async def listen_for_updates():
-    async with websockets.connect(f"{WS_BASE_URL}/ws") as ws:
-        async for message in ws:
-            os.system('cls' if os.name == 'nt' else 'clear')
+    try:
+        async with websockets.connect(f"{WS_BASE_URL}/ws") as ws:
+            async for message in ws:
+                os.system('cls' if os.name == 'nt' else 'clear')
 
-            board = json.loads(message)
-            print(format_board(board["positions"]))
+                board = json.loads(message)
+                print(format_board(board["positions"]))
+    except websockets.exceptions.ConnectionClosedError:
+        print("Connection closed")
 
 async def main():
     await listen_for_updates()

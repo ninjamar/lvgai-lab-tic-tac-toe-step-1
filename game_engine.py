@@ -5,6 +5,8 @@ import httpx
 import redis.asyncio as redis
 import os
 from dotenv import load_dotenv
+import websockets
+
 
 load_dotenv()
 
@@ -20,6 +22,8 @@ BASE_URL = os.environ["BASE_URL"]
 PREFIX = os.environ["PREFIX"]
 KEY = os.environ["KEY"]
 PUB_SUB_KEY = os.environ["PUB_SUB_KEY"]
+WS_BASE_URL = os.environ["WS_BASE_URL"]
+
 
 
 def ensure_input(prompt: str, allowed: list, t: type = str):
@@ -49,15 +53,19 @@ async def reset(client: httpx.AsyncClient):
     return response.json()
 
 
-async def handle_board_state(client: httpx.AsyncClient, i_am_playing: str):
+async def handle_board_state(ws, client: httpx.AsyncClient, i_am_playing: str):
     t = await get_state(client)
     print("Player turn: ", t["player_turn"])
 
     # print(board.format_board())
     print(json.dumps(t, indent=2))
 
-    if t["state"] == "is_won" or t["state"] == "is_draw":
-        print(t["message"])
+    if t["state"] == "is_won":
+        print("Player ", t["winner"], " won!")
+        return True
+
+    if t["state"] == "is_draw":
+        print("The game is a draw!")
         return True
 
     if t["player_turn"] == i_am_playing:
@@ -71,16 +79,17 @@ async def handle_board_state(client: httpx.AsyncClient, i_am_playing: str):
                 continue
             else:
                 making_move = False
-
+                
+        await send_to_ws(ws, move)
         await rd.publish(PUB_SUB_KEY, "Yay!")
 
 
-async def listen_for_updates(client: httpx.AsyncClient, i_am_playing: str):
+async def listen_for_updates(ws, client: httpx.AsyncClient, i_am_playing: str):
     pubsub = rd.pubsub()
     await pubsub.subscribe(PUB_SUB_KEY)
 
     try:
-        result = await handle_board_state(client, i_am_playing)
+        result = await handle_board_state(ws, client, i_am_playing)
 
         if result:
             return
@@ -89,21 +98,23 @@ async def listen_for_updates(client: httpx.AsyncClient, i_am_playing: str):
 
         async for message in pubsub.listen():
             if message["type"] == "message":
-                result = await handle_board_state(client, i_am_playing)
+                result = await handle_board_state(ws, client, i_am_playing)
                 if result:
                     return
                 print("Waiting for other player...")
 
     finally:
-        await pubsub.close()
+        await pubsub.aclose()
 
+async def send_to_ws(websocket, message):
+    await websocket.send(json.dumps(message))
 
 async def main(args):
-    client = httpx.AsyncClient()
-    if args.reset:
-        await reset(client)
-        return
-    await listen_for_updates(client, args.player.lower())
+    async with websockets.connect(f"{WS_BASE_URL}/ws") as ws, httpx.AsyncClient() as client:
+        if args.reset:
+            await reset(client)
+            return
+        await listen_for_updates(ws, client, args.player.lower())
 
 
 if __name__ == "__main__":
