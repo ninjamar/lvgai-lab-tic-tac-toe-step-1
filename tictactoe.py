@@ -43,7 +43,10 @@ def ensure_input(prompt: str, allowed: list, t: type = str):
 class ClientResponse(BaseModel):
     success: bool
     message: str
-    board: list | None
+    state: str | None
+
+    board: list | None = None
+    winner: str | None = None
 
 @dataclasses.dataclass
 class TicTacToeBoard:
@@ -55,27 +58,31 @@ class TicTacToeBoard:
     def is_my_turn(self, i_am: str) -> bool:
         return self.player_turn == i_am and self.state == "is_playing"
 
-    def make_move(self, position: int) -> ClientResponse:
+    def make_move(self, i_am: str, position: int) -> ClientResponse:
+        if not self.is_my_turn(i_am):
+            return ClientResponse(success=False, message="It's not your turn", state=self.state)
         # Return True is move is valid and successful
         if self.state != "is_playing":
-            return ClientResponse(success=False, message="Game is not in progress", board=None)
+            return ClientResponse(success=False, message="Game is not in progress", state=self.state)
         if not (0 <= position < 9):
-            return ClientResponse(success=False, message="Invalid position", board=None)
+            return ClientResponse(success=False, message="Invalid position", state=self.state)
         if self.positions[position]:
-            return ClientResponse(success=False, message="Position already taken", board=None)
+            return ClientResponse(success=False, message="Position already taken", state=self.state)
         self.positions[position] = self.player_turn
 
         if winner := self.check_winner():
             self.state = "is_won"
             self.winner = winner
+            return ClientResponse(success=True, message=f"Player {winner.upper()} wins!", board=self.positions, state=self.state, winner=self.winner)
         elif self.check_draw():
             self.state = "is_draw"
+            return ClientResponse(success=True, message="The game is a draw!", board=self.positions, state=self.state, winner=self.winner)
         else:
             self.state = "is_playing"
 
         self.switch_turn()
 
-        return ClientResponse(success=True, message="Move successful", board=self.positions)
+        return ClientResponse(success=True, message="Move successful", board=self.positions, state=self.state)
     
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -157,7 +164,7 @@ async def handle_board_state(i_am_playing: str):
         making_move = True
         while making_move:
             move = ensure_input("Make a move:", range(9), int)
-            move = board.make_move(move)
+            move = board.make_move(i_am_playing, move)
             print(move.message)
 
             if not move.success:
