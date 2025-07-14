@@ -115,7 +115,7 @@ class TicTacToeBoard:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return dataclasses.asdict(self)        
+        return dataclasses.asdict(self)
 
     def check_winner(self) -> str | None:
         # Returns the winning player if there is one

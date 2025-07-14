@@ -25,7 +25,6 @@ PUB_SUB_KEY = os.environ["PUB_SUB_KEY"]
 WS_BASE_URL = os.environ["WS_BASE_URL"]
 
 
-
 def ensure_input(prompt: str, allowed: list, t: type = str):
     ipt = t(input(prompt))
     while ipt not in allowed:
@@ -79,7 +78,7 @@ async def handle_board_state(ws, client: httpx.AsyncClient, i_am_playing: str):
                 continue
             else:
                 making_move = False
-                
+
         await send_to_ws(ws, move)
         await rd.publish(PUB_SUB_KEY, "Yay!")
 
@@ -106,11 +105,16 @@ async def listen_for_updates(ws, client: httpx.AsyncClient, i_am_playing: str):
     finally:
         await pubsub.aclose()
 
+
 async def send_to_ws(websocket, message):
     await websocket.send(json.dumps(message))
 
+
 async def main(args):
-    async with websockets.connect(f"{WS_BASE_URL}/ws") as ws, httpx.AsyncClient() as client:
+    async with (
+        websockets.connect(f"{WS_BASE_URL}/ws") as ws,
+        httpx.AsyncClient() as client,
+    ):
         if args.reset:
             await reset(client)
             return
